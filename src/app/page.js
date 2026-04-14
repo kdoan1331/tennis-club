@@ -156,6 +156,20 @@ export default function ClubMatchLog() {
     setSavingSession(false);
   };
 
+  const deleteSession = async (sessionId) => {
+    if (!window.confirm("Delete this entire session and all its matches?")) return;
+    await supabase.from("matches").delete().eq("session_id", sessionId);
+    await supabase.from("sessions").delete().eq("id", sessionId);
+    setActiveSessionId(null);
+    await loadData();
+  };
+
+  const deleteMatch = async (matchId) => {
+    if (!window.confirm("Delete this match?")) return;
+    await supabase.from("matches").delete().eq("id", matchId);
+    await loadData();
+  };
+
   const addMatch = async (matchData) => {
     if (!activeSessionId) return;
     setSavingMatch(true);
@@ -195,9 +209,12 @@ export default function ClubMatchLog() {
           <>
             <div style={{ display: "flex", gap: 8, marginBottom: 18, overflowX: "auto", paddingBottom: 4 }}>
               {sessions.map(s => (
-                <button key={s.id} onClick={() => setActiveSessionId(s.id)} style={{ padding: "7px 14px", borderRadius: 10, border: "none", cursor: "pointer", whiteSpace: "nowrap", background: activeSessionId === s.id ? "#60A5FA" : "rgba(255,255,255,0.05)", color: activeSessionId === s.id ? "#080b10" : "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 700, fontFamily: "monospace" }}>
-                  {s.label}
-                </button>
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                  <button onClick={() => setActiveSessionId(s.id)} style={{ padding: "7px 14px", borderRadius: 10, border: "none", cursor: "pointer", whiteSpace: "nowrap", background: activeSessionId === s.id ? "#60A5FA" : "rgba(255,255,255,0.05)", color: activeSessionId === s.id ? "#080b10" : "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 700, fontFamily: "monospace" }}>
+                    {s.label}
+                  </button>
+                  <button onClick={() => deleteSession(s.id)} style={{ padding: "5px 7px", borderRadius: 8, border: "none", cursor: "pointer", background: "rgba(248,113,113,0.1)", color: "#F87171", fontSize: 11, lineHeight: 1 }}>✕</button>
+                </div>
               ))}
               <button onClick={() => setShowAddSession(true)} style={{ padding: "7px 14px", borderRadius: 10, border: "1px dashed rgba(255,255,255,0.15)", background: "transparent", color: "rgba(255,255,255,0.25)", cursor: "pointer", fontSize: 11, fontFamily: "monospace", whiteSpace: "nowrap" }}>
                 + New Session
@@ -215,7 +232,7 @@ export default function ClubMatchLog() {
                     const isDraw = result === "draw";
                     return (
                       <div key={match.id} style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 14, padding: "14px 16px" }}>
-                        <div style={{ fontSize: 9, letterSpacing: 3, color: "rgba(255,255,255,0.2)", marginBottom: 12, fontFamily: "monospace" }}>MATCH {idx + 1}{isDraw ? " · 🤝 DRAW" : ""}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 9, letterSpacing: 3, color: "rgba(255,255,255,0.2)", fontFamily: "monospace" }}>MATCH {idx + 1}{isDraw ? " · 🤝 DRAW" : ""}</div><button onClick={() => deleteMatch(match.id)} style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 6, color: "#F87171", fontSize: 10, padding: "3px 8px", cursor: "pointer", fontFamily: "monospace" }}>✕ delete</button></div>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <div style={{ flex: 1 }}>
                             {match.pair1.map(p => (
