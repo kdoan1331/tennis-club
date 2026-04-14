@@ -20,6 +20,10 @@ function formatVND(amount) {
   return (amount / 1000) + "k";
 }
 
+function stripCasual(name) {
+  return name.replace(/ \(casual\)$/i, "").trim();
+}
+
 function getFines(sessions, members, casualPlayers) {
   const memberFines = {};
   members.forEach(m => memberFines[m.name] = 0);
@@ -29,18 +33,13 @@ function getFines(sessions, members, casualPlayers) {
   sessions.forEach(session => {
     (session.matches || []).forEach(match => {
       const { pair1, pair2, score1, score2 } = match;
-      const losers = score1 === score2 ? [...pair1, ...pair2] : score1 < score2 ? pair1 : pair2;
-      losers.forEach(p => {
+      const isDraw = score1 === score2;
+      const losers = isDraw ? [...pair1, ...pair2] : score1 < score2 ? pair1 : pair2;
+      losers.forEach(rawName => {
+        const p = stripCasual(rawName);
         if (memberFines[p] !== undefined) memberFines[p] += 10000;
         else if (casualFines[p] !== undefined) casualFines[p] += 10000;
       });
-      if (score1 === score2) {
-        const winners = pair1;
-        winners.forEach(p => {
-          if (memberFines[p] !== undefined) memberFines[p] += 10000;
-          else if (casualFines[p] !== undefined) casualFines[p] += 10000;
-        });
-      }
     });
   });
   return { memberFines, casualFines };
@@ -570,20 +569,43 @@ export default function ClubMatchLog() {
                   ))}
                 </div>
 
-                {sortedCasualFines.length > 0 && (
+                {(sortedCasualFines.length > 0 || activeCasuals.length > 0) && (
                   <>
                     <div style={labelStyle}>CASUAL PLAYERS (THIS SESSION)</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {sortedCasualFines.map(([name, amount]) => (
-                        <div key={name} style={{ background: "rgba(96,165,250,0.04)", border: "1px solid rgba(96,165,250,0.15)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-                          <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(96,165,250,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#60A5FA", fontFamily: "monospace" }}>C</div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 14, fontWeight: 600 }}>{name}</div>
-                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 2, fontFamily: "monospace" }}>casual · {amount / 10000} loss{amount / 10000 > 1 ? "es" : ""}</div>
+                      {activeCasuals.map(c => {
+                        const fine = casualFines[c.name] || 0;
+                        const total = CASUAL_FEE + fine;
+                        return (
+                          <div key={c.id} style={{ background: "rgba(96,165,250,0.04)", border: "1px solid rgba(96,165,250,0.15)", borderRadius: 12, padding: "12px 16px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(96,165,250,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#60A5FA", fontFamily: "monospace", flexShrink: 0 }}>C</div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "monospace" }}>
+                                    {fine > 0 ? `${fine / 10000} loss${fine / 10000 > 1 ? "es" : ""}` : "no losses"}
+                                  </span>
+                                  <span style={{ fontSize: 10, fontFamily: "monospace", padding: "2px 7px", borderRadius: 6, background: c.paid ? "rgba(74,222,128,0.1)" : "rgba(251,146,60,0.1)", color: c.paid ? "#4ADE80" : "#FB923C", border: `1px solid ${c.paid ? "rgba(74,222,128,0.2)" : "rgba(251,146,60,0.2)"}` }}>
+                                    {c.paid ? "✓ 170k paid" : "⏳ 170k unpaid"}
+                                  </span>
+                                </div>
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                {fine > 0 && <div style={{ fontSize: 14, fontWeight: 700, color: "#FB923C" }}>−{formatVND(fine)} fine</div>}
+                              </div>
+                            </div>
+                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", fontFamily: "monospace" }}>
+                                170k entry {fine > 0 ? `+ ${formatVND(fine)} fine` : ""}
+                              </span>
+                              <span style={{ fontSize: 15, fontWeight: 700, color: c.paid && fine === 0 ? "#4ADE80" : "#F87171" }}>
+                                {formatVND(total)} total
+                              </span>
+                            </div>
                           </div>
-                          <div style={{ fontSize: 16, fontWeight: 700, color: "#FB923C" }}>−{formatVND(amount)}</div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </>
                 )}
@@ -599,4 +621,5 @@ export default function ClubMatchLog() {
     </div>
   );
 }
+
 
