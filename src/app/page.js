@@ -431,7 +431,7 @@ export default function ClubMatchLog() {
     const resolvedItem = fnbItem === "Khác..." ? fnbItemCustom.trim() : fnbItem;
     if (!fnbPlayer || !resolvedItem || !fnbPrice) return;
     const rawPrice = parseFloat(fnbPrice);
-    const totalPrice = rawPrice < 1000 ? Math.round(rawPrice * 1000) : Math.round(rawPrice);
+    const totalPrice = (rawPrice < 1000 ? Math.round(rawPrice * 1000) : Math.round(rawPrice)) * (parseInt(fnbQty) || 1);
     await supabase.from("fnb_orders").insert([{ player_name: fnbPlayer, item: resolvedItem, quantity: parseInt(fnbQty) || 1, total_price: totalPrice }]);
     setFnbItem(""); setFnbItemCustom(""); setFnbQty("1"); setFnbPrice("");
     await loadData();
