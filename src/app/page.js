@@ -431,8 +431,10 @@ export default function ClubMatchLog() {
     const resolvedItem = fnbItem === "Khác..." ? fnbItemCustom.trim() : fnbItem;
     if (!fnbPlayer || !resolvedItem || !fnbPrice) return;
     const rawPrice = parseFloat(fnbPrice);
-    const totalPrice = (rawPrice < 1000 ? Math.round(rawPrice * 1000) : Math.round(rawPrice)) * (parseInt(fnbQty) || 1);
-    await supabase.from("fnb_orders").insert([{ player_name: fnbPlayer, item: resolvedItem, quantity: parseInt(fnbQty) || 1, total_price: totalPrice }]);
+    const qty = parseInt(fnbQty) || 1;
+    const unitPrice = rawPrice < 1000 ? Math.round(rawPrice * 1000) : Math.round(rawPrice);
+    const totalPrice = unitPrice * qty;
+    await supabase.from("fnb_orders").insert([{ player_name: fnbPlayer, item: resolvedItem, quantity: qty, total_price: totalPrice }]);
     setFnbItem(""); setFnbItemCustom(""); setFnbQty("1"); setFnbPrice("");
     await loadData();
   };
@@ -726,7 +728,7 @@ export default function ClubMatchLog() {
                     <input value={fnbPrice} onChange={e => setFnbPrice(e.target.value)} type="number" placeholder="Giá (10 = 10k, 15000 = 15k)" style={{ ...inputStyle, width: "100%", marginBottom: 4 }} />
                     {fnbPrice !== "" && (
                       <div style={{ fontSize: 10, color: "#60A5FA", fontFamily: "monospace", marginBottom: 8 }}>
-                        = {formatVNDFull(parseFloat(fnbPrice) < 1000 ? Math.round(parseFloat(fnbPrice) * 1000) : Math.round(parseFloat(fnbPrice)))}
+                        = {formatVNDFull((parseFloat(fnbPrice) < 1000 ? Math.round(parseFloat(fnbPrice) * 1000) : Math.round(parseFloat(fnbPrice))) * (parseInt(fnbQty) || 1))}
                       </div>
                     )}
                   </div>
