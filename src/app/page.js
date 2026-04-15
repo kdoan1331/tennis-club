@@ -5,6 +5,15 @@ import { supabase } from "../lib/supabase";
 const ADMIN_PASSWORD = "keobonG11";
 const CASUAL_FEE = 170000;
 
+const FNB_ITEMS = [
+  "Pocari",
+  "Suối lớn",
+  "Trứng",
+  "Trà đá đường",
+  "Revive",
+  "Khác...",
+];
+
 function isBanned(name) {
   const n = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   return n.includes("troc");
@@ -18,6 +27,10 @@ function getResult(s1, s2) {
 function formatVND(amount) {
   if (amount === 0) return "0đ";
   return (amount / 1000) + "k";
+}
+
+function formatVNDFull(amount) {
+  return amount.toLocaleString("vi-VN") + "đ";
 }
 
 function stripCasual(name) {
@@ -120,16 +133,147 @@ function AddSessionModal({ onAdd, onClose, loading }) {
   const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const now = new Date();
-  const [label, setLabel] = useState(`${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}`);
+  const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const [dateVal, setDateVal] = useState(toISO(now));
+
+  const formatLabel = (iso) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    return `${days[dt.getDay()]}, ${months[dt.getMonth()]} ${dt.getDate()}`;
+  };
+
+  const label = dateVal ? formatLabel(dateVal) : "";
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }} onClick={onClose}>
       <div style={{ background: "#111620", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: 24, width: "100%", maxWidth: 340 }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: "#e2e8f0" }}>New Session</div>
-        <input value={label} onChange={e => setLabel(e.target.value)}
-          style={{ width: "100%", background: "#1a2030", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#e2e8f0", padding: "10px 12px", fontSize: 14, marginBottom: 16, boxSizing: "border-box" }} />
-        <button onClick={() => label.trim() && onAdd(label)} disabled={!label.trim() || loading}
-          style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: label.trim() && !loading ? "#60A5FA" : "rgba(255,255,255,0.06)", color: label.trim() && !loading ? "#080b10" : "rgba(255,255,255,0.2)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "monospace", letterSpacing: 1 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, color: "#e2e8f0" }}>New Session</div>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontFamily: "monospace", marginBottom: 16 }}>Pick a date for this session</div>
+        <input
+          type="date"
+          value={dateVal}
+          onChange={e => setDateVal(e.target.value)}
+          style={{ width: "100%", background: "#1a2030", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#e2e8f0", padding: "10px 12px", fontSize: 15, marginBottom: 10, boxSizing: "border-box", colorScheme: "dark" }}
+        />
+        {label && (
+          <div style={{ fontSize: 12, color: "#60A5FA", fontFamily: "monospace", marginBottom: 16, textAlign: "center" }}>
+            → {label}
+          </div>
+        )}
+        <button onClick={() => label && onAdd(label)} disabled={!label || loading}
+          style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: label && !loading ? "#60A5FA" : "rgba(255,255,255,0.06)", color: label && !loading ? "#080b10" : "rgba(255,255,255,0.2)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "monospace", letterSpacing: 1 }}>
           {loading ? "CREATING..." : "CREATE SESSION"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Share Message Modal ──────────────────────────────────────────────────────
+
+function ShareModal({ memberFines, totalFines, sessions, onClose, onSaveSnapshot }) {
+  const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const now = new Date();
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const weekLabel = `${months[now.getMonth()]} ${now.getDate()}`;
+  const totalMatches = sessions.reduce((sum, s) => sum + (s.matches || []).length, 0);
+
+  const sorted = Object.entries(memberFines).sort((a, b) => b[1] - a[1]);
+  const owers = sorted.filter(([, amt]) => amt > 0);
+  const clean = sorted.filter(([, amt]) => amt === 0);
+
+  const lines = [
+    `🎾 PHẠT TUẦN — ${weekLabel}`,
+    "─────────────────────",
+    ...owers.map(([name, amt]) => {
+      const shortName = name.split(" ").slice(-2).join(" ");
+      return `🔴 ${shortName.padEnd(16)} −${formatVNDFull(amt)}`;
+    }),
+    ...(clean.length > 0 ? clean.map(([name]) => {
+      const shortName = name.split(" ").slice(-2).join(" ");
+      return `✅ ${shortName.padEnd(16)}  0đ`;
+    }) : []),
+    "─────────────────────",
+    `💰 Tổng: ${formatVNDFull(totalFines)} (${sessions.length} buổi, ${totalMatches} trận)`,
+  ];
+  const message = lines.join("\n");
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(message).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleSaveAndReset = async () => {
+    if (!window.confirm("Save snapshot to history and reset all fines? This cannot be undone.")) return;
+    setSaving(true);
+    await onSaveSnapshot(message, weekLabel, totalFines, sessions.length, totalMatches);
+    setSaved(true);
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200, padding: 0 }} onClick={onClose}>
+      <div style={{ background: "#111620", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px 16px 0 0", padding: 24, width: "100%", maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0" }}>Share to Messenger / Zalo</div>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.06)", border: "none", borderRadius: 8, color: "rgba(255,255,255,0.4)", fontSize: 13, padding: "5px 10px", cursor: "pointer" }}>✕</button>
+        </div>
+
+        <div style={{ background: "#0d1117", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "14px 16px", fontFamily: "monospace", fontSize: 12, lineHeight: 1.9, color: "#e2e8f0", whiteSpace: "pre-wrap", marginBottom: 14, overflowX: "auto" }}>
+          {message}
+        </div>
+
+        <button onClick={handleCopy} style={{ width: "100%", padding: "12px", border: "none", borderRadius: 10, background: copied ? "#4ADE80" : "#60A5FA", color: "#080b10", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "monospace", marginBottom: 10 }}>
+          {copied ? "✓ Copied!" : "Copy Message"}
+        </button>
+
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 14, marginTop: 4 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(255,255,255,0.25)", fontFamily: "monospace", marginBottom: 10 }}>RESET WEEK</div>
+          {saved ? (
+            <div style={{ textAlign: "center", fontSize: 13, color: "#4ADE80", fontFamily: "monospace", padding: "10px 0" }}>✓ Saved to history & fines reset!</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginBottom: 10, lineHeight: 1.6 }}>
+                Saves a snapshot to the history log, then deletes all sessions and matches to start fresh. Club members list is kept.
+              </div>
+              <button onClick={handleSaveAndReset} disabled={saving} style={{ width: "100%", padding: "11px", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 10, background: "rgba(248,113,113,0.08)", color: saving ? "rgba(255,255,255,0.2)" : "#F87171", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "monospace" }}>
+                {saving ? "Saving..." : "💾 Save Snapshot & Reset Week"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Snapshot Detail Modal ────────────────────────────────────────────────────
+
+function SnapshotModal({ snapshot, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(snapshot.message_text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200 }} onClick={onClose}>
+      <div style={{ background: "#111620", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px 16px 0 0", padding: 24, width: "100%", maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0" }}>{snapshot.week_label}</div>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.06)", border: "none", borderRadius: 8, color: "rgba(255,255,255,0.4)", fontSize: 13, padding: "5px 10px", cursor: "pointer" }}>✕</button>
+        </div>
+        <div style={{ background: "#0d1117", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "14px 16px", fontFamily: "monospace", fontSize: 12, lineHeight: 1.9, color: "#e2e8f0", whiteSpace: "pre-wrap", marginBottom: 14, overflowX: "auto" }}>
+          {snapshot.message_text}
+        </div>
+        <button onClick={handleCopy} style={{ width: "100%", padding: "11px", border: "none", borderRadius: 10, background: copied ? "#4ADE80" : "#60A5FA", color: "#080b10", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "monospace" }}>
+          {copied ? "✓ Copied!" : "Copy Message"}
         </button>
       </div>
     </div>
@@ -143,8 +287,10 @@ export default function ClubMatchLog() {
   const [members, setMembers] = useState([]);
   const [casualPlayers, setCasualPlayers] = useState([]);
   const [fnbOrders, setFnbOrders] = useState([]);
+  const [snapshots, setSnapshots] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [view, setView] = useState("matches");
+  const [finesSubView, setFinesSubView] = useState("current"); // "current" | "history"
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState(null);
 
@@ -152,6 +298,8 @@ export default function ClubMatchLog() {
   const [showAddMatch, setShowAddMatch] = useState(false);
   const [showAddSession, setShowAddSession] = useState(false);
   const [showBanned, setShowBanned] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [selectedSnapshot, setSelectedSnapshot] = useState(null);
   const [savingMatch, setSavingMatch] = useState(false);
   const [savingSession, setSavingSession] = useState(false);
 
@@ -168,18 +316,20 @@ export default function ClubMatchLog() {
   // F&B
   const [fnbPlayer, setFnbPlayer] = useState("");
   const [fnbItem, setFnbItem] = useState("");
+  const [fnbItemCustom, setFnbItemCustom] = useState("");
   const [fnbQty, setFnbQty] = useState("1");
   const [fnbPrice, setFnbPrice] = useState("");
 
   const loadData = useCallback(async () => {
     setError(null);
     try {
-      const [{ data: sessionsData }, { data: matchesData }, { data: membersData }, { data: casualData }, { data: fnbData }] = await Promise.all([
+      const [{ data: sessionsData }, { data: matchesData }, { data: membersData }, { data: casualData }, { data: fnbData }, { data: snapshotData }] = await Promise.all([
         supabase.from("sessions").select("*").order("created_at", { ascending: false }),
         supabase.from("matches").select("*").order("created_at", { ascending: true }),
         supabase.from("members").select("*").order("created_at", { ascending: true }),
         supabase.from("casual_players").select("*").order("created_at", { ascending: true }),
         supabase.from("fnb_orders").select("*").order("created_at", { ascending: true }),
+        supabase.from("weekly_snapshots").select("*").order("created_at", { ascending: false }),
       ]);
       const combined = (sessionsData || []).map(s => ({
         ...s, matches: (matchesData || []).filter(m => m.session_id === s.id),
@@ -188,6 +338,7 @@ export default function ClubMatchLog() {
       setMembers(membersData || []);
       setCasualPlayers(casualData || []);
       setFnbOrders(fnbData || []);
+      setSnapshots(snapshotData || []);
       if (combined.length > 0) setActiveSessionId(prev => prev || combined[0].id);
     } catch (e) { setError("Failed to load data."); }
     setLoadingData(false);
@@ -202,6 +353,7 @@ export default function ClubMatchLog() {
       .on("postgres_changes", { event: "*", schema: "public", table: "members" }, loadData)
       .on("postgres_changes", { event: "*", schema: "public", table: "casual_players" }, loadData)
       .on("postgres_changes", { event: "*", schema: "public", table: "fnb_orders" }, loadData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "weekly_snapshots" }, loadData)
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [loadData]);
@@ -276,9 +428,12 @@ export default function ClubMatchLog() {
 
   // F&B
   const addFnbOrder = async () => {
-    if (!fnbPlayer || !fnbItem.trim() || !fnbPrice) return;
-    await supabase.from("fnb_orders").insert([{ player_name: fnbPlayer, item: fnbItem.trim(), quantity: parseInt(fnbQty) || 1, total_price: parseInt(fnbPrice) }]);
-    setFnbItem(""); setFnbQty("1"); setFnbPrice("");
+    const resolvedItem = fnbItem === "Khác..." ? fnbItemCustom.trim() : fnbItem;
+    if (!fnbPlayer || !resolvedItem || !fnbPrice) return;
+    const rawPrice = parseFloat(fnbPrice);
+    const totalPrice = rawPrice < 1000 ? Math.round(rawPrice * 1000) : Math.round(rawPrice);
+    await supabase.from("fnb_orders").insert([{ player_name: fnbPlayer, item: resolvedItem, quantity: parseInt(fnbQty) || 1, total_price: totalPrice }]);
+    setFnbItem(""); setFnbItemCustom(""); setFnbQty("1"); setFnbPrice("");
     await loadData();
   };
   const deleteFnbOrder = async (id) => {
@@ -288,6 +443,31 @@ export default function ClubMatchLog() {
   const resetFnb = async () => {
     if (!window.confirm("Reset all F&B orders?")) return;
     await supabase.from("fnb_orders").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await loadData();
+  };
+
+  // Weekly snapshot + reset
+  const saveSnapshotAndReset = async (messageText, weekLabel, totalFines, sessionCount, matchCount) => {
+    // Save snapshot
+    await supabase.from("weekly_snapshots").insert([{
+      week_label: weekLabel,
+      message_text: messageText,
+      total_fines: totalFines,
+      session_count: sessionCount,
+      match_count: matchCount,
+    }]);
+    // Delete all sessions (cascades to matches and casual_players)
+    const { data: allSessions } = await supabase.from("sessions").select("id");
+    if (allSessions && allSessions.length > 0) {
+      const ids = allSessions.map(s => s.id);
+      for (const id of ids) {
+        await supabase.from("casual_players").delete().eq("session_id", id);
+        await supabase.from("matches").delete().eq("session_id", id);
+      }
+      await supabase.from("sessions").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    }
+    setActiveSessionId(null);
+    setShowShare(false);
     await loadData();
   };
 
@@ -530,13 +710,28 @@ export default function ClubMatchLog() {
                     {members.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
                     {activeCasuals.map(c => <option key={c.id} value={c.name}>{c.name} (casual)</option>)}
                   </select>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                    <input value={fnbItem} onChange={e => setFnbItem(e.target.value)} placeholder="Item (Pocari, Cơm...)" style={{ ...inputStyle, flex: 2 }} />
+                  <div style={{ display: "flex", gap: 6, marginBottom: fnbItem === "Khác..." ? 6 : 8 }}>
+                    <select value={fnbItem} onChange={e => { setFnbItem(e.target.value); setFnbItemCustom(""); }}
+                      style={{ ...inputStyle, flex: 2 }}>
+                      <option value="">Chọn món...</option>
+                      {FNB_ITEMS.map(it => <option key={it} value={it}>{it}</option>)}
+                    </select>
                     <input value={fnbQty} onChange={e => setFnbQty(e.target.value)} type="number" min="1" placeholder="Qty" style={{ ...inputStyle, width: 56 }} />
                   </div>
-                  <input value={fnbPrice} onChange={e => setFnbPrice(e.target.value)} type="number" placeholder="Total price in VND (e.g. 15000)" style={{ ...inputStyle, width: "100%", marginBottom: 10 }} />
-                  <button onClick={addFnbOrder} disabled={!fnbPlayer || !fnbItem.trim() || !fnbPrice}
-                    style={{ width: "100%", padding: "11px", border: "none", borderRadius: 10, background: fnbPlayer && fnbItem.trim() && fnbPrice ? "#60A5FA" : "rgba(255,255,255,0.06)", color: fnbPlayer && fnbItem.trim() && fnbPrice ? "#080b10" : "rgba(255,255,255,0.2)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "monospace" }}>
+                  {fnbItem === "Khác..." && (
+                    <input value={fnbItemCustom} onChange={e => setFnbItemCustom(e.target.value)}
+                      placeholder="Tên món..." style={{ ...inputStyle, width: "100%", marginBottom: 8 }} />
+                  )}
+                  <div style={{ position: "relative" }}>
+                    <input value={fnbPrice} onChange={e => setFnbPrice(e.target.value)} type="number" placeholder="Giá (10 = 10k, 15000 = 15k)" style={{ ...inputStyle, width: "100%", marginBottom: 4 }} />
+                    {fnbPrice !== "" && (
+                      <div style={{ fontSize: 10, color: "#60A5FA", fontFamily: "monospace", marginBottom: 8 }}>
+                        = {formatVNDFull(parseFloat(fnbPrice) < 1000 ? Math.round(parseFloat(fnbPrice) * 1000) : Math.round(parseFloat(fnbPrice)))}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={addFnbOrder} disabled={!fnbPlayer || !(fnbItem === "Khác..." ? fnbItemCustom.trim() : fnbItem) || !fnbPrice}
+                    style={{ width: "100%", padding: "11px", border: "none", borderRadius: 10, background: (fnbPlayer && (fnbItem === "Khác..." ? fnbItemCustom.trim() : fnbItem) && fnbPrice) ? "#60A5FA" : "rgba(255,255,255,0.06)", color: (fnbPlayer && (fnbItem === "Khác..." ? fnbItemCustom.trim() : fnbItem) && fnbPrice) ? "#080b10" : "rgba(255,255,255,0.2)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "monospace" }}>
                     + Log Order
                   </button>
                 </div>
@@ -546,67 +741,111 @@ export default function ClubMatchLog() {
             {/* ── FINES ── */}
             {view === "fines" && (
               <>
-                <div style={{ background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.2)", borderRadius: 14, padding: "16px 20px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: 10, letterSpacing: 3, color: "#FB923C", fontFamily: "monospace" }}>TOTAL FINES COLLECTED</div>
-                    <div style={{ fontSize: 32, fontWeight: 900, color: "#FB923C", marginTop: 4 }}>{formatVND(totalFines)}</div>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 4, fontFamily: "monospace" }}>across all sessions</div>
-                  </div>
-                  <div style={{ fontSize: 36 }}>💰</div>
-                </div>
-
-                <div style={labelStyle}>CLUB MEMBERS</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-                  {sortedMemberFines.map(([name, amount], idx) => (
-                    <div key={name} style={{ background: "rgba(255,255,255,0.025)", border: `1px solid ${amount > 0 ? "rgba(251,146,60,0.15)" : "rgba(255,255,255,0.05)"}`, borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: 8, background: idx === 0 && amount > 0 ? "rgba(251,146,60,0.2)" : "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>{idx + 1}</div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: amount > 0 ? 600 : 400 }}>{name}</div>
-                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 2, fontFamily: "monospace" }}>{amount > 0 ? `${amount / 10000} loss${amount / 10000 > 1 ? "es" : ""}` : "clean record ✨"}</div>
-                      </div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: amount > 0 ? "#FB923C" : "#4ADE80" }}>{amount > 0 ? `−${formatVND(amount)}` : "0đ"}</div>
-                    </div>
+                {/* Sub-tab toggle */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+                  {[["current", "This Week"], ["history", `History (${snapshots.length})`]].map(([v, label]) => (
+                    <button key={v} onClick={() => setFinesSubView(v)} style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", background: finesSubView === v ? "#FB923C" : "rgba(255,255,255,0.06)", color: finesSubView === v ? "#080b10" : "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 700, fontFamily: "monospace" }}>
+                      {label}
+                    </button>
                   ))}
                 </div>
 
-                {(sortedCasualFines.length > 0 || activeCasuals.length > 0) && (
+                {finesSubView === "current" && (
                   <>
-                    <div style={labelStyle}>CASUAL PLAYERS (THIS SESSION)</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {activeCasuals.map(c => {
-                        const fine = casualFines[c.name] || 0;
-                        const total = CASUAL_FEE + fine;
-                        return (
-                          <div key={c.id} style={{ background: "rgba(96,165,250,0.04)", border: "1px solid rgba(96,165,250,0.15)", borderRadius: 12, padding: "12px 16px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                              <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(96,165,250,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#60A5FA", fontFamily: "monospace", flexShrink: 0 }}>C</div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "monospace" }}>
-                                    {fine > 0 ? `${fine / 10000} loss${fine / 10000 > 1 ? "es" : ""}` : "no losses"}
+                    <div style={{ background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.2)", borderRadius: 14, padding: "16px 20px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 10, letterSpacing: 3, color: "#FB923C", fontFamily: "monospace" }}>TOTAL FINES COLLECTED</div>
+                        <div style={{ fontSize: 32, fontWeight: 900, color: "#FB923C", marginTop: 4 }}>{formatVND(totalFines)}</div>
+                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 4, fontFamily: "monospace" }}>across all sessions</div>
+                      </div>
+                      <button onClick={() => setShowShare(true)} style={{ background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.3)", borderRadius: 10, color: "#60A5FA", fontSize: 11, fontWeight: 700, padding: "10px 14px", cursor: "pointer", fontFamily: "monospace", textAlign: "center", lineHeight: 1.5 }}>
+                        📤 Share<br /><span style={{ fontSize: 9, opacity: 0.7 }}>& Reset</span>
+                      </button>
+                    </div>
+
+                    <div style={labelStyle}>CLUB MEMBERS</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+                      {sortedMemberFines.map(([name, amount], idx) => (
+                        <div key={name} style={{ background: "rgba(255,255,255,0.025)", border: `1px solid ${amount > 0 ? "rgba(251,146,60,0.15)" : "rgba(255,255,255,0.05)"}`, borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+                          <div style={{ width: 28, height: 28, borderRadius: 8, background: idx === 0 && amount > 0 ? "rgba(251,146,60,0.2)" : "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>{idx + 1}</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: amount > 0 ? 600 : 400 }}>{name}</div>
+                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 2, fontFamily: "monospace" }}>{amount > 0 ? `${amount / 10000} loss${amount / 10000 > 1 ? "es" : ""}` : "clean record ✨"}</div>
+                          </div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: amount > 0 ? "#FB923C" : "#4ADE80" }}>{amount > 0 ? `−${formatVND(amount)}` : "0đ"}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {(sortedCasualFines.length > 0 || activeCasuals.length > 0) && (
+                      <>
+                        <div style={labelStyle}>CASUAL PLAYERS (THIS SESSION)</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {activeCasuals.map(c => {
+                            const fine = casualFines[c.name] || 0;
+                            const total = CASUAL_FEE + fine;
+                            return (
+                              <div key={c.id} style={{ background: "rgba(96,165,250,0.04)", border: "1px solid rgba(96,165,250,0.15)", borderRadius: 12, padding: "12px 16px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                  <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(96,165,250,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#60A5FA", fontFamily: "monospace", flexShrink: 0 }}>C</div>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "monospace" }}>
+                                        {fine > 0 ? `${fine / 10000} loss${fine / 10000 > 1 ? "es" : ""}` : "no losses"}
+                                      </span>
+                                      <span style={{ fontSize: 10, fontFamily: "monospace", padding: "2px 7px", borderRadius: 6, background: c.paid ? "rgba(74,222,128,0.1)" : "rgba(251,146,60,0.1)", color: c.paid ? "#4ADE80" : "#FB923C", border: `1px solid ${c.paid ? "rgba(74,222,128,0.2)" : "rgba(251,146,60,0.2)"}` }}>
+                                        {c.paid ? "✓ 170k paid" : "⏳ 170k unpaid"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: "right" }}>
+                                    {fine > 0 && <div style={{ fontSize: 14, fontWeight: 700, color: "#FB923C" }}>−{formatVND(fine)} fine</div>}
+                                  </div>
+                                </div>
+                                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", fontFamily: "monospace" }}>
+                                    170k entry {fine > 0 ? `+ ${formatVND(fine)} fine` : ""}
                                   </span>
-                                  <span style={{ fontSize: 10, fontFamily: "monospace", padding: "2px 7px", borderRadius: 6, background: c.paid ? "rgba(74,222,128,0.1)" : "rgba(251,146,60,0.1)", color: c.paid ? "#4ADE80" : "#FB923C", border: `1px solid ${c.paid ? "rgba(74,222,128,0.2)" : "rgba(251,146,60,0.2)"}` }}>
-                                    {c.paid ? "✓ 170k paid" : "⏳ 170k unpaid"}
+                                  <span style={{ fontSize: 15, fontWeight: 700, color: c.paid && fine === 0 ? "#4ADE80" : "#F87171" }}>
+                                    {formatVND(total)} total
                                   </span>
                                 </div>
                               </div>
-                              <div style={{ textAlign: "right" }}>
-                                {fine > 0 && <div style={{ fontSize: 14, fontWeight: 700, color: "#FB923C" }}>−{formatVND(fine)} fine</div>}
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {finesSubView === "history" && (
+                  <>
+                    {snapshots.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "40px 0", color: "rgba(255,255,255,0.2)", fontFamily: "monospace", fontSize: 12 }}>
+                        No history yet — use "Share & Reset" to save your first weekly snapshot
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {snapshots.map(snap => (
+                          <div key={snap.id} onClick={() => setSelectedSnapshot(snap)}
+                            style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+                            <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(251,146,60,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>📋</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600 }}>{snap.week_label}</div>
+                              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", fontFamily: "monospace", marginTop: 3 }}>
+                                {snap.session_count} buổi · {snap.match_count} trận
                               </div>
                             </div>
-                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", fontFamily: "monospace" }}>
-                                170k entry {fine > 0 ? `+ ${formatVND(fine)} fine` : ""}
-                              </span>
-                              <span style={{ fontSize: 15, fontWeight: 700, color: c.paid && fine === 0 ? "#4ADE80" : "#F87171" }}>
-                                {formatVND(total)} total
-                              </span>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: "#FB923C" }}>−{formatVND(snap.total_fines)}</div>
+                              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "monospace", marginTop: 2 }}>tap to view</div>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </>
                 )}
               </>
@@ -618,8 +857,16 @@ export default function ClubMatchLog() {
       {showAddMatch && <AddMatchModal onAdd={addMatch} onClose={() => setShowAddMatch(false)} loading={savingMatch} allPlayers={allPlayers} />}
       {showAddSession && <AddSessionModal onAdd={addSession} onClose={() => setShowAddSession(false)} loading={savingSession} />}
       {showBanned && <BannedModal onClose={() => setShowBanned(false)} />}
+      {showShare && (
+        <ShareModal
+          memberFines={memberFines}
+          totalFines={totalFines}
+          sessions={sessions}
+          onClose={() => setShowShare(false)}
+          onSaveSnapshot={saveSnapshotAndReset}
+        />
+      )}
+      {selectedSnapshot && <SnapshotModal snapshot={selectedSnapshot} onClose={() => setSelectedSnapshot(null)} />}
     </div>
   );
 }
-
-
