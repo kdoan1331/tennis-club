@@ -50,8 +50,8 @@ function getFines(sessions, members, casualPlayers) {
       const losers = isDraw ? [...pair1, ...pair2] : score1 < score2 ? pair1 : pair2;
       losers.forEach(rawName => {
         const p = stripCasual(rawName);
-        if (memberFines[p] !== undefined) memberFines[p] += 10000;
-        else if (casualFines[p] !== undefined) casualFines[p] += 10000;
+        if (memberFines[p] !== undefined) memberFines[p] += 20000;
+        else if (casualFines[p] !== undefined) casualFines[p] += 20000;
       });
     });
   });
@@ -450,7 +450,6 @@ export default function ClubMatchLog() {
 
   // Weekly snapshot + reset
   const saveSnapshotAndReset = async (messageText, weekLabel, totalFines, sessionCount, matchCount) => {
-    // Save snapshot
     await supabase.from("weekly_snapshots").insert([{
       week_label: weekLabel,
       message_text: messageText,
@@ -458,7 +457,6 @@ export default function ClubMatchLog() {
       session_count: sessionCount,
       match_count: matchCount,
     }]);
-    // Delete all sessions (cascades to matches and casual_players)
     const { data: allSessions } = await supabase.from("sessions").select("id");
     if (allSessions && allSessions.length > 0) {
       const ids = allSessions.map(s => s.id);
@@ -494,7 +492,7 @@ export default function ClubMatchLog() {
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 10, letterSpacing: 5, color: "#4ADE80", marginBottom: 6, fontFamily: "monospace" }}>🎾 CLUB MATCH LOG</div>
           <div style={{ fontSize: 28, fontWeight: 900 }}>Club Sessions</div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 4, fontFamily: "monospace" }}>Tue & Thu · 10k/player per loss · 10k each on draw</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 4, fontFamily: "monospace" }}>Tue & Thu · 20k/player per loss · 20k each on draw</div>
         </div>
 
         {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 12, color: "#F87171" }}>⚠ {error}</div>}
@@ -567,8 +565,8 @@ export default function ClubMatchLog() {
                               </div>
                             </div>
                             <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 10, color: "rgba(255,255,255,0.25)", fontFamily: "monospace", display: "flex", justifyContent: "space-between" }}>
-                              <span>{isDraw ? "All 4 players fined 10k each" : "Losers pay 10k each"}</span>
-                              <span style={{ color: "#FB923C" }}>{isDraw ? "40k total" : "20k total"}</span>
+                              <span>{isDraw ? "All 4 players fined 20k each" : "Losers pay 20k each"}</span>
+                              <span style={{ color: "#FB923C" }}>{isDraw ? "80k total" : "40k total"}</span>
                             </div>
                           </div>
                         );
@@ -587,7 +585,6 @@ export default function ClubMatchLog() {
             {/* ── MEMBERS ── */}
             {view === "members" && (
               <>
-                {/* Admin lock */}
                 {!adminUnlocked ? (
                   <div style={{ background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.2)", borderRadius: 12, padding: "16px", marginBottom: 16 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -610,7 +607,6 @@ export default function ClubMatchLog() {
                   </div>
                 )}
 
-                {/* Club members list */}
                 <div style={cardStyle}>
                   <div style={labelStyle}>CLUB MEMBERS · {members.length}</div>
                   {members.map(m => (
@@ -630,7 +626,6 @@ export default function ClubMatchLog() {
                   )}
                 </div>
 
-                {/* Divider */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "18px 0 12px" }}>
                   <span style={{ fontSize: 10, letterSpacing: 3, color: "rgba(255,255,255,0.2)", fontFamily: "monospace" }}>CASUAL PLAYERS THIS SESSION</span>
                   <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
@@ -743,7 +738,6 @@ export default function ClubMatchLog() {
             {/* ── FINES ── */}
             {view === "fines" && (
               <>
-                {/* Sub-tab toggle */}
                 <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
                   {[["current", "This Week"], ["history", `History (${snapshots.length})`]].map(([v, label]) => (
                     <button key={v} onClick={() => setFinesSubView(v)} style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", background: finesSubView === v ? "#FB923C" : "rgba(255,255,255,0.06)", color: finesSubView === v ? "#080b10" : "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 700, fontFamily: "monospace" }}>
@@ -772,7 +766,7 @@ export default function ClubMatchLog() {
                           <div style={{ width: 28, height: 28, borderRadius: 8, background: idx === 0 && amount > 0 ? "rgba(251,146,60,0.2)" : "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(255,255,255,0.3)", fontFamily: "monospace" }}>{idx + 1}</div>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 14, fontWeight: amount > 0 ? 600 : 400 }}>{name}</div>
-                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 2, fontFamily: "monospace" }}>{amount > 0 ? `${amount / 10000} loss${amount / 10000 > 1 ? "es" : ""}` : "clean record ✨"}</div>
+                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 2, fontFamily: "monospace" }}>{amount > 0 ? `${amount / 20000} loss${amount / 20000 > 1 ? "es" : ""}` : "clean record ✨"}</div>
                           </div>
                           <div style={{ fontSize: 16, fontWeight: 700, color: amount > 0 ? "#FB923C" : "#4ADE80" }}>{amount > 0 ? `−${formatVND(amount)}` : "0đ"}</div>
                         </div>
@@ -794,7 +788,7 @@ export default function ClubMatchLog() {
                                     <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
                                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                                       <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "monospace" }}>
-                                        {fine > 0 ? `${fine / 10000} loss${fine / 10000 > 1 ? "es" : ""}` : "no losses"}
+                                        {fine > 0 ? `${fine / 20000} loss${fine / 20000 > 1 ? "es" : ""}` : "no losses"}
                                       </span>
                                       <span style={{ fontSize: 10, fontFamily: "monospace", padding: "2px 7px", borderRadius: 6, background: c.paid ? "rgba(74,222,128,0.1)" : "rgba(251,146,60,0.1)", color: c.paid ? "#4ADE80" : "#FB923C", border: `1px solid ${c.paid ? "rgba(74,222,128,0.2)" : "rgba(251,146,60,0.2)"}` }}>
                                         {c.paid ? "✓ 170k paid" : "⏳ 170k unpaid"}
